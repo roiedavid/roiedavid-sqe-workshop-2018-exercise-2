@@ -12,17 +12,38 @@ const astToCode = (ast) => {
     return escodegen.generate(ast);
 };
 
-
-function symbolicSubstitution(functionDeclaration) {
+// Performs symbolic substitution on a function with given args
+function symbolicSubstitution(parsedCode) {
+    let extracted = extractFunctionAndArgs(parsedCode); // esprima ast to 2 asts represent functions and it's args
+    let parsedFunction = extracted.parsedFunction, parsedArgs = extracted.parsedArgs;
+    let args = getArgsValues(parsedArgs); // esprima ast to array of values
     let params = [], varTable = [];
-    for (let i = 0 ; i< functionDeclaration.params.length; i++)
-        params.push(astToCode(functionDeclaration.params[i]));
-    substitute(functionDeclaration, params, varTable);
-    let args = [1,2,3]; // replace with real args
-    functionDeclaration = parseCode(removeEmptyStatements(astToCode(functionDeclaration)));
-    functionDeclaration = parseCode(astToCode(functionDeclaration)); // updates lines
-    let linesColorsArray = pathColoring(functionDeclaration, generateBindings(params,args));
-    return {functionDeclaration: functionDeclaration, linesColorsArray:linesColorsArray};
+    for (let i = 0 ; i< parsedFunction.params.length; i++)
+        params.push(astToCode(parsedFunction.params[i])); // params is array of the function's params names
+    substitute(parsedFunction, params, varTable); // static substitution. replace local vars with params expressions
+    parsedFunction = parseCode(removeEmptyStatements(astToCode(parsedFunction))); // get rid of EmptyStatements
+    parsedFunction = parseCode(astToCode(parsedFunction)); // updates lines
+    let linesColorsArray = pathColoring(parsedFunction, generateBindings(params,args));
+    return {function: parsedFunction, linesColorsArray:linesColorsArray};
+}
+
+// 1 esprima ast of function and it's args -> map of function and args
+function extractFunctionAndArgs(parsedCode) {
+    let parsedFunction, parsedArgs;
+    for (let i = 0; i < parsedCode.body.length; i++){
+        if(parsedCode.body[i].type === 'FunctionDeclaration')
+            parsedFunction = parsedCode.body[i];
+        else if (parsedCode.body[i].type === 'ExpressionStatement')
+            parsedArgs = parsedCode.body[i];
+    }
+    return {parsedFunction:parsedFunction, parsedArgs:parsedArgs};
+}
+
+// esprima ast represents the function's args -> array of values
+function getArgsValues(parsedArgs) {
+    if (parsedArgs.expression.type === 'SequenceExpression') // case for more than one arguments
+        return parsedArgs.expression.expressions.map(exp => eval(astToCode(exp)));
+    return [eval(astToCode(parsedArgs.expression))]; // only one argument
 }
 
 const substituteHandlersMap = {'VariableDeclaration': substituteVariableDeclarationHandler,
@@ -53,7 +74,7 @@ function substituteVariableDeclarationHandler(node, params, varTable){
     for (let i = 0; i < node.declarations.length; i++) {
         let name = astToCode(node.declarations[i].id);
         let value = astToCode(getValueAsParamsExp(node.declarations[i].init, params, varTable)).replace(/;/g, '');
-        varTable.push({name:name, value: value, line:node.loc.start.line});
+        varTable.push({name:name, value: value});
     }
     return varTable;
 }
@@ -128,18 +149,6 @@ function isEmptyLine(codeLine) {
     return true;
 }
 
-function replaceTestVariablesByValues(test, bindings) {
-    return estraverse.replace(test, {
-        enter: function (node) {
-            if (node.type === 'Identifier') {
-                let name  = astToCode(node);
-                let value = bindings[name];
-                return {type: 'Literal', value: value, raw: '1', loc: node.loc};
-            }
-        }
-    });
-}
-
 function generateBindings(params,args) {
     let bindings = {};
     for (let i = 0 ; i < params.length; i++)
@@ -167,7 +176,19 @@ function evalTest(test, bindings) {
     // deep copy, don't want to sub input vector params to values and show it on output
     let newTest = JSON.parse(JSON.stringify(test));
     newTest = replaceTestVariablesByValues(newTest, bindings);
-    return (eval(astToCode(newTest)));
+    return eval(astToCode(newTest));
+}
+
+function replaceTestVariablesByValues(test, bindings) {
+    return estraverse.replace(test, {
+        enter: function (node) {
+            if (node.type === 'Identifier') {
+                let name  = astToCode(node);
+                let value = bindings[name];
+                return parseCode(JSON.stringify(value)).body[0].expression;
+            }
+        }
+    });
 }
 
 export {parseCode, astToCode, symbolicSubstitution};
