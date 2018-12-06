@@ -1,20 +1,29 @@
 import * as esprima from 'esprima';
+import * as estraverse from 'estraverse';
+import * as escodegen from 'escodegen';
 
+// parseCode : string -> ast
 const parseCode = (codeToParse) => {
     return esprima.parseScript(codeToParse ,{loc:true});
 };
 
+// astToCode : ast -> string
+const astToCode = (ast) => {
+    return escodegen.generate(ast);
+};
+
+const typesHandlersMap = {Program: extractProgramHandler, FunctionDeclaration: extractFunctionDeclarationHandler,
+    Identifier: extractIdentifierHandler, BlockStatement: extractBlockStatementHandler,
+    ReturnStatement: extractReturnStatementHandler, BinaryExpression: extractBinaryExpressionHandler,
+    Literal: extractLiteralHandler, IfStatement: extractIfStatementHandler,
+    WhileStatement:extractWhileStatementHandler, ExpressionStatement: extractExpressionStatementHandler,
+    VariableDeclaration: extractVariableDeclarationHandler, VariableDeclarator: extractVariableDeclaratorHandler,
+    AssignmentExpression: extractAssignmentExpressionHandler,UnaryExpression: extractUnaryExpressionHandler,
+    MemberExpression: extractMemberExpressionHandler, UpdateExpression: extractUpdateExpressionHandler,
+    ForStatement: extractForStatementHandler, SequenceExpression: extractSequenceExpressionHandler,
+    LogicalExpression: extractLogicalExpressionHandler, CallExpression: extractCallExpressionHandler};
+
 function extract(element) {
-    const typesHandlersMap = {Program: extractProgramHandler, FunctionDeclaration: extractFunctionDeclarationHandler,
-        Identifier: extractIdentifierHandler, BlockStatement: extractBlockStatementHandler,
-        ReturnStatement: extractReturnStatementHandler, BinaryExpression: extractBinaryExpressionHandler,
-        Literal: extractLiteralHandler, IfStatement: extractIfStatementHandler,
-        WhileStatement:extractWhileStatementHandler, ExpressionStatement: extractExpressionStatementHandler,
-        VariableDeclaration: extractVariableDeclarationHandler, VariableDeclarator: extractVariableDeclaratorHandler,
-        AssignmentExpression: extractAssignmentExpressionHandler,UnaryExpression: extractUnaryExpressionHandler,
-        MemberExpression: extractMemberExpressionHandler, UpdateExpression: extractUpdateExpressionHandler,
-        ForStatement: extractForStatementHandler, SequenceExpression: extractSequenceExpressionHandler,
-        LogicalExpression: extractLogicalExpressionHandler, CallExpression: extractCallExpressionHandler};
     let func = typesHandlersMap[element.type];
     return func ? func(element) : null;
 }
@@ -57,7 +66,10 @@ function extractReturnStatementHandler(returnStatement) {
 }
 
 function extractBinaryExpressionHandler(binaryExpression) {
-    return arrayOfOneMapToString(extract(binaryExpression.left)) + ' ' + binaryExpression.operator + ' ' + arrayOfOneMapToString(extract(binaryExpression.right));
+    let res = arrayOfOneMapToString(extract(binaryExpression.left)) + ' ' + binaryExpression.operator + ' ' + arrayOfOneMapToString(extract(binaryExpression.right));
+    if(['+','-','*','/',].includes(binaryExpression.operator))
+        res = '(' + res + ')';
+    return res;
 }
 
 function extractLiteralHandler(literal) {
@@ -103,7 +115,7 @@ function extractVariableDeclaratorHandler(variableDeclarator) {
 }
 
 function extractAssignmentExpressionHandler(assignmentExpression) {
-    let name =  assignmentExpression.left.name ;
+    let name =  arrayOfOneMapToString(extract(assignmentExpression.left));
     let value = arrayOfOneMapToString(extract(assignmentExpression.right));
     return [{line : assignmentExpression.loc.start.line , type :'assignment expression', name: name, condition: '', value: value}];
 }
@@ -115,7 +127,7 @@ function extractUnaryExpressionHandler(unaryExpression) {
 
 function extractMemberExpressionHandler(memberExpression) {
     let value = arrayOfOneMapToString(extract(memberExpression.object)) + (memberExpression.computed ? '[' : '.') +
-                arrayOfOneMapToString(extract(memberExpression.property)) + (memberExpression.computed ? ']' : '');
+        arrayOfOneMapToString(extract(memberExpression.property)) + (memberExpression.computed ? ']' : '');
     return [{line : memberExpression.loc.start.line , type :'member expression', name: '', condition: '', value: value}];
 }
 
@@ -176,4 +188,142 @@ function getTupleName(tuple) {
 function getTupleValue(tuple) {
     return tuple.value;
 }
-export {parseCode, extract};
+
+// assignment2 code starts here
+function symbolicSubstitution(functionDeclaration) {
+    let params = [], varTable = [];
+    for (let i = 0 ; i< functionDeclaration.params.length; i++)
+        params.push(astToCode(functionDeclaration.params[i]));
+    substituteBody(functionDeclaration.body, params, varTable);
+    let args = [1,2,3]; // replace with real args
+    functionDeclaration = parseCode(removeEmptyStatements(astToCode(functionDeclaration)));
+    functionDeclaration = parseCode(astToCode(functionDeclaration)); // updates lines
+    let linesColorsArray = pathColoring(functionDeclaration, generateBindings(params,args));
+
+    for (let i = 0 ; i < linesColorsArray.length; i++)
+        if(linesColorsArray[i].color !== 'white')
+            console.log(linesColorsArray[i]);
+
+    return {functionDeclaration: functionDeclaration, linesColorsArray:linesColorsArray};
+}
+
+function removeEmptyStatements(codeString) {
+    let newCodeString = '', codeLinesArray = codeString.split('\n');
+    for (let i = 0 ; i< codeLinesArray.length; i++)
+        if (!isEmptyLine(codeLinesArray[i]))
+            newCodeString+=codeLinesArray[i]+'\n';
+    return newCodeString;
+}
+
+function isEmptyLine(codeLine) {
+    for (let i = 0; i < codeLine.length; i++)
+        if (!(codeLine[i] === ' ' || codeLine[i] === ';'))
+            return false;
+    return true;
+}
+
+function pathColoring(functionDeclaration, bindings) {
+    let linesColorsArray = [];
+    estraverse.traverse(functionDeclaration, {
+        enter: function (node) {
+            if (node.type == 'IfStatement') {
+                let testRes = evalTest(node.test, bindings);
+                linesColorsArray.push({line: node.loc.start.line, color: testRes ? 'green' : 'red'});
+                if(node.alternate && node.alternate.type !== 'IfStatement')
+                    this.skip();
+            }
+            linesColorsArray.push({line: node.loc.start.line, color:'white'});
+        }
+    });
+    return linesColorsArray;
+}
+
+function evalTest(test, bindings) {
+    test = replaceTestVariablesByValues(test, bindings);
+    if(test)
+        return true;
+    return false;
+}
+
+function replaceTestVariablesByValues(test) {
+    return true;
+}
+
+function substituteBody(body, params, varTable) {
+    estraverse.replace(body, {
+        enter: function (astNode) {
+            if (astNode.type === 'VariableDeclaration') {
+                for (let i = 0; i < astNode.declarations.length; i++) {
+                    let name = astToCode(astNode.declarations[i].id);
+                    let value = astToCode(getValueAsParamsExp(astNode.declarations[i].init, params, varTable)).replace(/;/g, '');
+                    varTable.push({name:name, value: value, line:astNode.loc.start.line});
+                }
+                this.remove();
+            }
+            if (astNode.type === 'IfStatement') {
+                let newTest = escodegen.generate(getValueAsParamsExp(astNode.test, params, varTable)).replace(/;/g, '');
+                astNode.test = parseCode(newTest).body[0].expression;
+                let scopeVarTable = JSON.parse(JSON.stringify(varTable)); // deep copy of varTable
+                for (let i = 0; i < astNode.consequent.body.length; i++){
+                    let node = astNode.consequent.body[i];
+                    if (node.type === 'ExpressionStatement' && node.expression.type === 'AssignmentExpression') {
+                        let name = astToCode(node.expression.left);
+                        let value = astToCode(getValueAsParamsExp(node.expression.right, params, scopeVarTable)).replace(/;/g, '');
+                        for (let i = 0; i < scopeVarTable.length; i++)
+                            if (scopeVarTable[i].name === name)
+                                scopeVarTable[i] = {name: name, value: value, line: node.loc.start.line};
+                        node.expression.right = parseCode(value).body[0].expression;
+                        if (!params.includes(name))
+                            astNode.consequent.body[i] = parseCode(';');
+                    }
+                }
+            }
+            if (astNode.type === 'WhileStatement') {
+                let newTest = astToCode(getValueAsParamsExp(astNode.test, params, varTable)).replace(/;/g, '');
+                astNode.test = parseCode(newTest).body[0].expression;
+                let scopeVarTable = JSON.parse(JSON.stringify(varTable)); // deep copy of varTable
+                substituteBody(astNode.body, params, scopeVarTable);
+            }
+            if (astNode.type === 'ExpressionStatement' && astNode.expression.type === 'AssignmentExpression') {
+                let name = astToCode(astNode.expression.left);
+                let value = astToCode(getValueAsParamsExp(astNode.expression.right, params, varTable)).replace(/;/g, '');
+                for (let i = 0; i < varTable.length; i++)
+                    if(varTable[i].name === name)
+                        varTable[i] = {name:name, value: value, line:astNode.loc.start.line};
+                astNode.expression.right = parseCode(value).body[0].expression;
+                if (!params.includes(name))
+                    this.remove();
+            }
+            if (astNode.type === 'ReturnStatement') {
+                let newTest = astToCode(getValueAsParamsExp(astNode.argument, params, varTable)).replace(/;/g, '');
+                astNode.argument = parseCode(newTest).body[0].expression;
+            }
+        }
+    });
+    // for (let i = 0; i < varTable.length; i++)
+    //     console.log(JSON.stringify(varTable[i]));
+    return varTable;
+}
+
+function getValueAsParamsExp(value, params, varTable) {
+    return estraverse.replace(value, {
+        enter: function (node) {
+            if (node.type === 'Identifier' && !params.includes(astToCode(node))) {
+                for (let i = 0; i < varTable.length; i++)
+                    if(varTable[i].name === astToCode(node))
+                        return parseCode(varTable[i].value);
+            }
+            if (node.type === 'BinaryExpression' && node.left.type==='Literal' && node.right.type==='Literal')
+                return parseCode(eval(astToCode(node)).toString());
+        }
+    });
+}
+
+function generateBindings(params,args) {
+    let bindings = {};
+    for (let i = 0 ; i < params.length; i++)
+        bindings[params[i]]=args[i];
+    return bindings;
+}
+
+export {parseCode, astToCode, symbolicSubstitution};
