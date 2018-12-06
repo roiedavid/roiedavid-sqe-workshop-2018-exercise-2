@@ -8,13 +8,26 @@ $(document).ready(function () {
         let codeToParse = $('#codePlaceholder').val();
         let parsedCode = parseCode(codeToParse); // string -> ast
         $('#parsedCode').val(JSON.stringify(parsedCode, null, 2));
-        let substituted = symbolicSubstitution(parsedCode.body[0]); // returns {func, linesColorsArray}
+        let extracted = extractFunctionAndArgs(parsedCode);
+        let parsedFunction = extracted.parsedFunction, parsedArgs = extracted.parsedArgs;
+        let substituted = symbolicSubstitution(parsedFunction); // returns {func, linesColorsArray}
         let substitutedCode = astToCode(substituted.functionDeclaration); // ast -> string
         let substitutedCodeLines = substitutedCode.split('\n'); // split output to lines array
         clearSubstitutedCode(); // clears page if it's already has code output from previous time
         showSubstitutedCode(substitutedCodeLines, substituted.linesColorsArray);
     });
 });
+
+function extractFunctionAndArgs(parsedCode) {
+    let parsedFunction, parsedArgs;
+    for (let i = 0; i < parsedCode.body.length; i++){
+        if(parsedCode.body[i].type === 'FunctionDeclaration')
+            parsedFunction = parsedCode.body[i];
+        else if (parsedCode.body[i].type === 'ExpressionStatement')
+            parsedArgs = parsedCode.body[i];
+    }
+    return {parsedFunction:parsedFunction, parsedArgs:parsedArgs};
+}
 
 function showSubstitutedCode(substitutedCodeLines, linesColorsArray) {
     let htmlCodeObj = document.getElementById('substitutedCode'); // get substitutedCode html paragraph
