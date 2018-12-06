@@ -11,8 +11,6 @@ $(document).ready(function () {
         let substituted = symbolicSubstitution(parsedCode.body[0]); // returns {func, linesColorsArray}
         let substitutedCode = astToCode(substituted.functionDeclaration); // ast -> string
         let substitutedCodeLines = substitutedCode.split('\n'); // split output to lines array
-        for (let i = 0; i < substitutedCodeLines.length; i++)
-            console.log(substitutedCodeLines[i]);
         clearSubstitutedCode(); // clears page if it's already has code output from previous time
         showSubstitutedCode(substitutedCodeLines, substituted.linesColorsArray);
     });

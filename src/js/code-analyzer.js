@@ -199,11 +199,6 @@ function symbolicSubstitution(functionDeclaration) {
     functionDeclaration = parseCode(removeEmptyStatements(astToCode(functionDeclaration)));
     functionDeclaration = parseCode(astToCode(functionDeclaration)); // updates lines
     let linesColorsArray = pathColoring(functionDeclaration, generateBindings(params,args));
-
-    for (let i = 0 ; i < linesColorsArray.length; i++)
-        if(linesColorsArray[i].color !== 'white')
-            console.log(linesColorsArray[i]);
-
     return {functionDeclaration: functionDeclaration, linesColorsArray:linesColorsArray};
 }
 
@@ -239,14 +234,24 @@ function pathColoring(functionDeclaration, bindings) {
 }
 
 function evalTest(test, bindings) {
-    test = replaceTestVariablesByValues(test, bindings);
-    if(test)
+    // deep copy, don't want to sub input vector params to values and show it on output
+    let newTest = JSON.parse(JSON.stringify(test));
+    newTest = replaceTestVariablesByValues(newTest, bindings);
+    if(eval(astToCode(newTest)))
         return true;
     return false;
 }
 
-function replaceTestVariablesByValues(test) {
-    return true;
+function replaceTestVariablesByValues(test, bindings) {
+    return estraverse.replace(test, {
+        enter: function (node) {
+            if (node.type === 'Identifier') {
+                let name  = astToCode(node);
+                let value = bindings[name];
+                return {type: 'Literal', value: value, raw: '1', loc: node.loc};
+            }
+        }
+    });
 }
 
 function substituteBody(body, params, varTable) {
@@ -300,8 +305,6 @@ function substituteBody(body, params, varTable) {
             }
         }
     });
-    // for (let i = 0; i < varTable.length; i++)
-    //     console.log(JSON.stringify(varTable[i]));
     return varTable;
 }
 
