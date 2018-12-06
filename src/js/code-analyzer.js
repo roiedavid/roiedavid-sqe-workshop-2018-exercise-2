@@ -7,12 +7,12 @@ const parseCode = (codeToParse) => {
     return esprima.parseScript(codeToParse ,{loc:true});
 };
 
-// astToCode : ast -> string
+    // astToCode : ast -> string
 const astToCode = (ast) => {
     return escodegen.generate(ast);
 };
 
-// Performs symbolic substitution on a function with given args
+    // Performs symbolic substitution on a function with given args
 function symbolicSubstitution(parsedCode) {
     let extracted = extractFunctionAndArgs(parsedCode); // esprima ast to 2 asts represent functions and it's args
     let parsedFunction = extracted.parsedFunction, parsedArgs = extracted.parsedArgs;
@@ -125,20 +125,33 @@ function substituteReturnStatementHandler(node, params, varTable) {
 function getValueAsParamsExp(value, params, varTable) {
     return estraverse.replace(value, {
         enter: function (node) {
-            if (node.type === 'Identifier' && !params.includes(astToCode(node))) {
+            if (isLocalVariable(node, params)) {
                 for (let i = 0; i < varTable.length; i++)
                     if(varTable[i].name === astToCode(node))
                         return parseCode(varTable[i].value);
             }
+            if(node.type === 'BinaryExpression')
+                return removeZeroFromBinaryExpression(node);
         }
     });
+}
+
+function isLocalVariable(node, params) {
+    return node.type === 'Identifier' && !params.includes(astToCode(node));
+}
+
+function removeZeroFromBinaryExpression(node) {
+    if(astToCode(node.left) === '0')
+        return node.right;
+    if(astToCode(node.right) === '0')
+        return node.left;
 }
 
 function removeEmptyStatements(codeString) {
     let newCodeString = '', codeLinesArray = codeString.split('\n');
     for (let i = 0 ; i< codeLinesArray.length; i++)
         if (!isEmptyLine(codeLinesArray[i]))
-            newCodeString+=codeLinesArray[i]+'\n';
+            newCodeString += codeLinesArray[i];
     return newCodeString;
 }
 
@@ -162,11 +175,8 @@ function pathColoring(functionDeclaration, bindings) {
         enter: function (node) {
             if (node.type === 'IfStatement') {
                 let testRes = evalTest(node.test, bindings);
-                linesColorsArray.push({line: node.loc.start.line, color: testRes ? 'green' : 'red'});
-                if(node.alternate && node.alternate.type !== 'IfStatement')
-                    this.skip();
+                linesColorsArray.push({line: node.loc.start.line, color: testRes ? 'chartreuse' : 'red'});
             }
-            linesColorsArray.push({line: node.loc.start.line, color:'white'});
         }
     });
     return linesColorsArray;
