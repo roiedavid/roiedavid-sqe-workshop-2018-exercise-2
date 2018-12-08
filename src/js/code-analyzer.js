@@ -7,43 +7,30 @@ const parseCode = (codeToParse) => {
     return esprima.parseScript(codeToParse ,{loc:true});
 };
 
-    // astToCode : ast -> string
+// astToCode : ast -> string
 const astToCode = (ast) => {
     return escodegen.generate(ast);
 };
 
-    // Performs symbolic substitution on a function with given args
-function symbolicSubstitution(parsedCode) {
-    let extracted = extractFunctionAndArgs(parsedCode); // esprima ast to 2 asts represent functions and it's args
-    let parsedFunction = extracted.parsedFunction, parsedArgs = extracted.parsedArgs;
-    let args = getArgsValues(parsedArgs); // esprima ast to array of values
-    let params = [], varTable = [];
-    for (let i = 0 ; i< parsedFunction.params.length; i++)
-        params.push(astToCode(parsedFunction.params[i])); // params is array of the function's params names
-    substitute(parsedFunction, params, varTable); // static substitution. replace local vars with params expressions
-    parsedFunction = parseCode(removeEmptyStatements(astToCode(parsedFunction))); // get rid of EmptyStatements
-    parsedFunction = parseCode(astToCode(parsedFunction)); // updates lines
-    let linesColorsArray = pathColoring(parsedFunction, generateBindings(params,args));
-    return {function: parsedFunction, linesColorsArray:linesColorsArray};
-}
-
-// 1 esprima ast of function and it's args -> map of function and args
-function extractFunctionAndArgs(parsedCode) {
-    let parsedFunction, parsedArgs;
-    for (let i = 0; i < parsedCode.body.length; i++){
-        if(parsedCode.body[i].type === 'FunctionDeclaration')
-            parsedFunction = parsedCode.body[i];
-        else if (parsedCode.body[i].type === 'ExpressionStatement')
-            parsedArgs = parsedCode.body[i];
-    }
-    return {parsedFunction:parsedFunction, parsedArgs:parsedArgs};
-}
-
 // esprima ast represents the function's args -> array of values
 function getArgsValues(parsedArgs) {
-    if (parsedArgs.expression.type === 'SequenceExpression') // case for more than one arguments
-        return parsedArgs.expression.expressions.map(exp => eval(astToCode(exp)));
-    return [eval(astToCode(parsedArgs.expression))]; // only one argument
+    let expression = parsedArgs.body[0].expression;
+    if (expression.type === 'SequenceExpression') // case for more than one arguments
+        return expression.expressions.map(exp => eval(astToCode(exp)));
+    return [eval(astToCode(expression))]; // only one argument
+}
+
+// Performs symbolic substitution on a function with given args
+function symbolicSubstitution(parsedCode, parsedArgs) {
+    let params = [], varTable = [], args = getArgsValues(parsedArgs);
+    parsedCode = parsedCode.body[0];
+    for (let i = 0 ; i< parsedCode.params.length; i++)
+        params.push(astToCode(parsedCode.params[i])); // params is array of the function's params names
+    substitute(parsedCode, params, varTable); // static substitution. replace local vars with params expressions
+    parsedCode = parseCode(removeEmptyStatements(astToCode(parsedCode))); // get rid of EmptyStatements
+    parsedCode = parseCode(astToCode(parsedCode)); // updates lines
+    let linesColorsArray = pathColoring(parsedCode, generateBindings(params,args));
+    return {function: parsedCode, linesColorsArray:linesColorsArray};
 }
 
 const substituteHandlersMap = {'VariableDeclaration': substituteVariableDeclarationHandler,
