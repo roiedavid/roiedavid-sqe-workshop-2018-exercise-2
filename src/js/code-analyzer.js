@@ -115,7 +115,7 @@ function getValueAsParamsExp(value, params, varTable) {
             if (isLocalVariable(node, params)) {
                 for (let i = 0; i < varTable.length; i++)
                     if(varTable[i].name === astToCode(node))
-                        return parseCode(varTable[i].value);
+                        return parseCode(varTable[i].value).body[0];
             }
             if(node.type === 'BinaryExpression')
                 return removeZeroFromBinaryExpression(node);

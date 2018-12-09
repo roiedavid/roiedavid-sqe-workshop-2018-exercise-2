@@ -15,7 +15,10 @@ $(document).ready(function () {
 });
 
 function showSubstitutedCode(substitutedCodeLines, linesColorsArray) {
-    let htmlCodeObj = document.getElementById('substitutedCode'); // get substitutedCode html paragraph
+    let htmlCodeObj = document.getElementById('substitutedCode'), caption = document.createElement('caption');
+    caption.appendChild(document.createTextNode('Result'));
+    caption.setAttribute('style', 'font:arial; font-size:130% ; font-weight: bold;');
+    htmlCodeObj.appendChild(caption);
     for (let i = 0; i < substitutedCodeLines.length; i++) { // remove empty lines loop
         let nextLine = document.createElement('line' + i); // next line to show
         nextLine.appendChild(document.createTextNode(substitutedCodeLines[i])); // add it's code text
