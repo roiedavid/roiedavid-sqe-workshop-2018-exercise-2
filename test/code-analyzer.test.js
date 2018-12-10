@@ -1,5 +1,112 @@
 import assert from 'assert';
-import {parseCode} from '../src/js/code-analyzer';
+import {parseCode, symbolicSubstitution, initVarTable} from '../src/js/code-analyzer';
 
 describe('The javascript parser', () => {
+    it('first test', () => {
+        let parsedCode = parseCode(`function foo(x, y, z){
+    let a = x + 1;
+    let b = a + y;
+    let c = 0;
+
+    if (b < z) {
+        c = c + 5;
+        return x + y + z + c;
+    } else if (b < z * 2) {
+        c = c + x + 5;
+        return x + y + z + c;
+    } else {
+        c = c + z + 5;
+        return x + y + z + c;
+    }
+}
+`);
+        let parsedArgs = parseCode('1,2,3');
+        let expected = '{"function":{"type":"Program","body":[{"type":"FunctionDeclaration","id":{"type":"Identifier","name":"foo","loc":{"start":{"line":1,"column":9},"end":{"line":1,"column":12}}},"params":[{"type":"Identifier","name":"x","loc":{"start":{"line":1,"column":13},"end":{"line":1,"column":14}}},{"type":"Identifier","name":"y","loc":{"start":{"line":1,"column":16},"end":{"line":1,"column":17}}},{"type":"Identifier","name":"z","loc":{"start":{"line":1,"column":19},"end":{"line":1,"column":20}}}],"body":{"type":"BlockStatement","body":[{"type":"IfStatement","test":{"type":"BinaryExpression","operator":"<","left":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"Identifier","name":"x","loc":{"start":{"line":2,"column":8},"end":{"line":2,"column":9}}},"right":{"type":"Literal","value":1,"raw":"1","loc":{"start":{"line":2,"column":12},"end":{"line":2,"column":13}}},"loc":{"start":{"line":2,"column":8},"end":{"line":2,"column":13}}},"right":{"type":"Identifier","name":"y","loc":{"start":{"line":2,"column":16},"end":{"line":2,"column":17}}},"loc":{"start":{"line":2,"column":8},"end":{"line":2,"column":17}}},"right":{"type":"Identifier","name":"z","loc":{"start":{"line":2,"column":20},"end":{"line":2,"column":21}}},"loc":{"start":{"line":2,"column":8},"end":{"line":2,"column":21}}},"consequent":{"type":"BlockStatement","body":[{"type":"ReturnStatement","argument":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"Identifier","name":"x","loc":{"start":{"line":3,"column":15},"end":{"line":3,"column":16}}},"right":{"type":"Identifier","name":"y","loc":{"start":{"line":3,"column":19},"end":{"line":3,"column":20}}},"loc":{"start":{"line":3,"column":15},"end":{"line":3,"column":20}}},"right":{"type":"Identifier","name":"z","loc":{"start":{"line":3,"column":23},"end":{"line":3,"column":24}}},"loc":{"start":{"line":3,"column":15},"end":{"line":3,"column":24}}},"right":{"type":"Literal","value":0,"raw":"0","loc":{"start":{"line":3,"column":27},"end":{"line":3,"column":28}}},"loc":{"start":{"line":3,"column":15},"end":{"line":3,"column":28}}},"right":{"type":"Literal","value":5,"raw":"5","loc":{"start":{"line":3,"column":31},"end":{"line":3,"column":32}}},"loc":{"start":{"line":3,"column":15},"end":{"line":3,"column":32}}},"loc":{"start":{"line":3,"column":8},"end":{"line":3,"column":33}}}],"loc":{"start":{"line":2,"column":23},"end":{"line":4,"column":5}}},"alternate":{"type":"IfStatement","test":{"type":"BinaryExpression","operator":"<","left":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"Identifier","name":"x","loc":{"start":{"line":4,"column":15},"end":{"line":4,"column":16}}},"right":{"type":"Literal","value":1,"raw":"1","loc":{"start":{"line":4,"column":19},"end":{"line":4,"column":20}}},"loc":{"start":{"line":4,"column":15},"end":{"line":4,"column":20}}},"right":{"type":"Identifier","name":"y","loc":{"start":{"line":4,"column":23},"end":{"line":4,"column":24}}},"loc":{"start":{"line":4,"column":15},"end":{"line":4,"column":24}}},"right":{"type":"BinaryExpression","operator":"*","left":{"type":"Identifier","name":"z","loc":{"start":{"line":4,"column":27},"end":{"line":4,"column":28}}},"right":{"type":"Literal","value":2,"raw":"2","loc":{"start":{"line":4,"column":31},"end":{"line":4,"column":32}}},"loc":{"start":{"line":4,"column":27},"end":{"line":4,"column":32}}},"loc":{"start":{"line":4,"column":15},"end":{"line":4,"column":32}}},"consequent":{"type":"BlockStatement","body":[{"type":"ReturnStatement","argument":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"Identifier","name":"x","loc":{"start":{"line":5,"column":15},"end":{"line":5,"column":16}}},"right":{"type":"Identifier","name":"y","loc":{"start":{"line":5,"column":19},"end":{"line":5,"column":20}}},"loc":{"start":{"line":5,"column":15},"end":{"line":5,"column":20}}},"right":{"type":"Identifier","name":"z","loc":{"start":{"line":5,"column":23},"end":{"line":5,"column":24}}},"loc":{"start":{"line":5,"column":15},"end":{"line":5,"column":24}}},"right":{"type":"Literal","value":0,"raw":"0","loc":{"start":{"line":5,"column":27},"end":{"line":5,"column":28}}},"loc":{"start":{"line":5,"column":15},"end":{"line":5,"column":28}}},"right":{"type":"Identifier","name":"x","loc":{"start":{"line":5,"column":31},"end":{"line":5,"column":32}}},"loc":{"start":{"line":5,"column":15},"end":{"line":5,"column":32}}},"right":{"type":"Literal","value":5,"raw":"5","loc":{"start":{"line":5,"column":35},"end":{"line":5,"column":36}}},"loc":{"start":{"line":5,"column":15},"end":{"line":5,"column":36}}},"loc":{"start":{"line":5,"column":8},"end":{"line":5,"column":37}}}],"loc":{"start":{"line":4,"column":34},"end":{"line":6,"column":5}}},"alternate":{"type":"BlockStatement","body":[{"type":"ReturnStatement","argument":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"BinaryExpression","operator":"+","left":{"type":"Identifier","name":"x","loc":{"start":{"line":7,"column":15},"end":{"line":7,"column":16}}},"right":{"type":"Identifier","name":"y","loc":{"start":{"line":7,"column":19},"end":{"line":7,"column":20}}},"loc":{"start":{"line":7,"column":15},"end":{"line":7,"column":20}}},"right":{"type":"Identifier","name":"z","loc":{"start":{"line":7,"column":23},"end":{"line":7,"column":24}}},"loc":{"start":{"line":7,"column":15},"end":{"line":7,"column":24}}},"right":{"type":"Literal","value":0,"raw":"0","loc":{"start":{"line":7,"column":27},"end":{"line":7,"column":28}}},"loc":{"start":{"line":7,"column":15},"end":{"line":7,"column":28}}},"right":{"type":"Identifier","name":"z","loc":{"start":{"line":7,"column":31},"end":{"line":7,"column":32}}},"loc":{"start":{"line":7,"column":15},"end":{"line":7,"column":32}}},"right":{"type":"Literal","value":5,"raw":"5","loc":{"start":{"line":7,"column":35},"end":{"line":7,"column":36}}},"loc":{"start":{"line":7,"column":15},"end":{"line":7,"column":36}}},"loc":{"start":{"line":7,"column":8},"end":{"line":7,"column":37}}}],"loc":{"start":{"line":6,"column":11},"end":{"line":8,"column":5}}},"loc":{"start":{"line":4,"column":11},"end":{"line":8,"column":5}}},"loc":{"start":{"line":2,"column":4},"end":{"line":8,"column":5}}}],"loc":{"start":{"line":1,"column":22},"end":{"line":9,"column":1}}},"generator":false,"expression":false,"async":false,"loc":{"start":{"line":1,"column":0},"end":{"line":9,"column":1}}}],"sourceType":"script","loc":{"start":{"line":1,"column":0},"end":{"line":9,"column":1}}},"linesColorsArray":[{"line":2,"color":"red"},{"line":4,"color":"chartreuse"}]}';
+        assert(JSON.stringify(symbolicSubstitution(parsedCode,parsedArgs)) === expected);
+    });
+
+    it('global vars test only one arg', () => {
+        let parsedCode = parseCode(`
+    function foo(x){
+    let a = x + 1;
+    if (a < 3) {
+        return x;
+    }
+}
+`);
+        let parsedArgs = parseCode('1');
+        let expected = '{"function":{"type":"Program","body":[{"type":"FunctionDeclaration","id":{"type":"Identifier","name":"foo","loc":{"start":{"line":1,"column":9},"end":{"line":1,"column":12}}},"params":[{"type":"Identifier","name":"x","loc":{"start":{"line":1,"column":13},"end":{"line":1,"column":14}}}],"body":{"type":"BlockStatement","body":[{"type":"IfStatement","test":{"type":"BinaryExpression","operator":"<","left":{"type":"BinaryExpression","operator":"+","left":{"type":"Identifier","name":"x","loc":{"start":{"line":2,"column":8},"end":{"line":2,"column":9}}},"right":{"type":"Literal","value":1,"raw":"1","loc":{"start":{"line":2,"column":12},"end":{"line":2,"column":13}}},"loc":{"start":{"line":2,"column":8},"end":{"line":2,"column":13}}},"right":{"type":"Literal","value":3,"raw":"3","loc":{"start":{"line":2,"column":16},"end":{"line":2,"column":17}}},"loc":{"start":{"line":2,"column":8},"end":{"line":2,"column":17}}},"consequent":{"type":"BlockStatement","body":[{"type":"ReturnStatement","argument":{"type":"Identifier","name":"x","loc":{"start":{"line":3,"column":15},"end":{"line":3,"column":16}}},"loc":{"start":{"line":3,"column":8},"end":{"line":3,"column":17}}}],"loc":{"start":{"line":2,"column":19},"end":{"line":4,"column":5}}},"alternate":null,"loc":{"start":{"line":2,"column":4},"end":{"line":4,"column":5}}}],"loc":{"start":{"line":1,"column":16},"end":{"line":5,"column":1}}},"generator":false,"expression":false,"async":false,"loc":{"start":{"line":1,"column":0},"end":{"line":5,"column":1}}}],"sourceType":"script","loc":{"start":{"line":1,"column":0},"end":{"line":5,"column":1}}},"linesColorsArray":[{"line":2,"color":"chartreuse"}]}';
+        assert(JSON.stringify(symbolicSubstitution(parsedCode,parsedArgs)) === expected);
+
+    });
+
+
+    it('global vars test', () => {
+        let parsedCode = parseCode(`
+    let w = 9;
+    function foo(x, y, z){
+    let a = x + 1;
+    let b = a + y;
+    let c = 0;
+
+    if (b < z) {
+        c = c + 5;
+        return x + y + z + c;
+    } else if (b < z * 2) {
+        c = c + x + 5;
+        return x + y + z + c;
+    } else {
+        c = c + z + 5;
+        return x + y + z + c;
+    }
+}
+let q = 99;
+`);
+        let t1 = initVarTable(parsedCode);
+        assert(JSON.stringify(t1) === '[{"name":"w","value":"9"},{"name":"q","value":"99"}]');
+    });
+
+
+
+    it('while test', () => {
+        let parsedCode = parseCode(`
+    function foo(x){
+    let a = x + 1;
+    while (a < 100) {
+        x = x + 1;       
+     } 
+}
+`);
+        let parsedArgs = parseCode('1');
+        let expected = '{"function":{"type":"Program","body":[{"type":"FunctionDeclaration","id":{"type":"Identifier","name":"foo","loc":{"start":{"line":1,"column":9},"end":{"line":1,"column":12}}},"params":[{"type":"Identifier","name":"x","loc":{"start":{"line":1,"column":13},"end":{"line":1,"column":14}}}],"body":{"type":"BlockStatement","body":[{"type":"WhileStatement","test":{"type":"BinaryExpression","operator":"<","left":{"type":"BinaryExpression","operator":"+","left":{"type":"Identifier","name":"x","loc":{"start":{"line":2,"column":11},"end":{"line":2,"column":12}}},"right":{"type":"Literal","value":1,"raw":"1","loc":{"start":{"line":2,"column":15},"end":{"line":2,"column":16}}},"loc":{"start":{"line":2,"column":11},"end":{"line":2,"column":16}}},"right":{"type":"Literal","value":100,"raw":"100","loc":{"start":{"line":2,"column":19},"end":{"line":2,"column":22}}},"loc":{"start":{"line":2,"column":11},"end":{"line":2,"column":22}}},"body":{"type":"BlockStatement","body":[{"type":"ExpressionStatement","expression":{"type":"AssignmentExpression","operator":"=","left":{"type":"Identifier","name":"x","loc":{"start":{"line":3,"column":8},"end":{"line":3,"column":9}}},"right":{"type":"BinaryExpression","operator":"+","left":{"type":"Identifier","name":"x","loc":{"start":{"line":3,"column":12},"end":{"line":3,"column":13}}},"right":{"type":"Literal","value":1,"raw":"1","loc":{"start":{"line":3,"column":16},"end":{"line":3,"column":17}}},"loc":{"start":{"line":3,"column":12},"end":{"line":3,"column":17}}},"loc":{"start":{"line":3,"column":8},"end":{"line":3,"column":17}}},"loc":{"start":{"line":3,"column":8},"end":{"line":3,"column":18}}}],"loc":{"start":{"line":2,"column":24},"end":{"line":4,"column":5}}},"loc":{"start":{"line":2,"column":4},"end":{"line":4,"column":5}}}],"loc":{"start":{"line":1,"column":16},"end":{"line":5,"column":1}}},"generator":false,"expression":false,"async":false,"loc":{"start":{"line":1,"column":0},"end":{"line":5,"column":1}}}],"sourceType":"script","loc":{"start":{"line":1,"column":0},"end":{"line":5,"column":1}}},"linesColorsArray":[]}';
+        assert(JSON.stringify(symbolicSubstitution(parsedCode,parsedArgs)) === expected);
+    });
+
+
+    it('global vars test with assignment', () => {
+        let parsedCode = parseCode(`
+    let w = 9;
+    function foo(x, y, z){
+    let a = x + 1;
+    let b = a + y;
+    let c = 0;
+
+    if (b < z) {
+        c = c + 5;
+        return x + y + z + c;
+    } else if (b < z * 2) {
+        c = c + x + 5;
+        return x + y + z + c;
+    } else {
+        c = c + z + 5;
+        return x + y + z + c;
+    }
+}
+let q = 99;
+q=10;
+`);
+        let t1 = initVarTable(parsedCode);
+        assert(JSON.stringify(t1) === '[{"name":"w","value":"9"},{"name":"q","value":"10"}]');
+    });
+
 });

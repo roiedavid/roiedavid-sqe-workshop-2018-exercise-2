@@ -12,6 +12,45 @@ const astToCode = (ast) => {
     return escodegen.generate(ast);
 };
 
+function initVarTable(parsedCode) {
+    let varTable = [];
+    estraverse.traverse(parsedCode, {
+        enter: function (node) {
+            if (node.type === 'VariableDeclaration')
+                globalVariableDeclarationHandler(node, varTable);
+            if (node.type === 'AssignmentExpression')
+                globalAssignmentExpressionHandler(node, varTable);
+            if (node.type === 'FunctionDeclaration')
+                this.skip();
+        }
+    });
+    return varTable;
+}
+
+function globalVariableDeclarationHandler(node, varTable) {
+    for (let i = 0; i < node.declarations.length; i++)
+        varTable.push({name: astToCode(node.declarations[i].id), value: astToCode(node.declarations[i].init)});
+}
+
+function globalAssignmentExpressionHandler(node, varTable) {
+    for (let i = 0; i < varTable.length; i++)
+        if (varTable[i].name === astToCode(node.left))
+            varTable[i] = {name: astToCode(node.left), value: astToCode(node.right)};
+}
+
+function getFunctionDecl(parsedCode) {
+    for (let i = 0 ; i < parsedCode.body.length; i++)
+        if(parsedCode.body[i].type === 'FunctionDeclaration')
+            return parsedCode.body[i];
+}
+
+function initParams(parsedFunction) {
+    let params = [];
+    for (let i = 0 ; i < parsedFunction.params.length; i++)
+        params.push(astToCode(parsedFunction.params[i])); // params is array of the function's params names
+    return params;
+}
+
 // esprima ast represents the function's args -> array of values
 function getArgsValues(parsedArgs) {
     let expression = parsedArgs.body[0].expression;
@@ -22,15 +61,12 @@ function getArgsValues(parsedArgs) {
 
 // Performs symbolic substitution on a function with given args
 function symbolicSubstitution(parsedCode, parsedArgs) {
-    let params = [], varTable = [], args = getArgsValues(parsedArgs);
-    parsedCode = parsedCode.body[0];
-    for (let i = 0 ; i< parsedCode.params.length; i++)
-        params.push(astToCode(parsedCode.params[i])); // params is array of the function's params names
-    substitute(parsedCode, params, varTable); // static substitution. replace local vars with params expressions
-    parsedCode = parseCode(removeEmptyStatements(astToCode(parsedCode))); // get rid of EmptyStatements
-    parsedCode = parseCode(astToCode(parsedCode)); // updates lines
-    let linesColorsArray = pathColoring(parsedCode, generateBindings(params,args));
-    return {function: parsedCode, linesColorsArray:linesColorsArray};
+    let varTable = initVarTable(parsedCode), parsedFunction= getFunctionDecl(parsedCode), params = initParams(parsedFunction), args = getArgsValues(parsedArgs);
+    substitute(parsedFunction, params, varTable); // static substitution. replace local vars with params expressions
+    parsedFunction = parseCode(removeEmptyStatements(astToCode(parsedFunction))); // get rid of EmptyStatements
+    parsedFunction = parseCode(astToCode(parsedFunction)); // updates lines
+    let linesColorsArray = pathColoring(parsedFunction, generateBindings(params, args, varTable));
+    return {function: parsedFunction, linesColorsArray: linesColorsArray};
 }
 
 const substituteHandlersMap = {'VariableDeclaration': substituteVariableDeclarationHandler,
@@ -67,7 +103,7 @@ function substituteVariableDeclarationHandler(node, params, varTable){
 }
 
 function substituteIfStatementHandler(node, params, varTable) {
-    let newTest = escodegen.generate(getValueAsParamsExp(node.test, params, varTable)).replace(/;/g, '');
+    let newTest = astToCode(getValueAsParamsExp(node.test, params, varTable)).replace(/;/g, '');
     node.test = parseCode(newTest).body[0].expression;
     let scopeVarTable = JSON.parse(JSON.stringify(varTable)); // deep copy of varTable
     for (let i = 0; i < node.consequent.body.length; i++){
@@ -96,9 +132,14 @@ function substituteAssignmentExpressionHandler(expressionStatementNode, params, 
         return varTable;
     let name = astToCode(expressionStatementNode.expression.left);
     let value = astToCode(getValueAsParamsExp(expressionStatementNode.expression.right, params, varTable)).replace(/;/g, '');
-    for (let i = 0; i < varTable.length; i++)
-        if(varTable[i].name === name)
-            varTable[i] = {name: name, value: value, line: expressionStatementNode.loc.start.line};
+    let found = false;
+    for (let i = 0; i < varTable.length && !found; i++)
+        if (varTable[i].name === name) {
+            varTable[i] = {name: name, value: value};
+            found = true;
+        }
+    if(!found) // first change of param
+        varTable.push({name: name, value: value});
     expressionStatementNode.expression.right = parseCode(value).body[0].expression;
     return varTable;
 }
@@ -117,21 +158,12 @@ function getValueAsParamsExp(value, params, varTable) {
                     if(varTable[i].name === astToCode(node))
                         return parseCode(varTable[i].value).body[0];
             }
-            if(node.type === 'BinaryExpression')
-                return removeZeroFromBinaryExpression(node);
         }
     });
 }
 
 function isLocalVariable(node, params) {
     return node.type === 'Identifier' && !params.includes(astToCode(node));
-}
-
-function removeZeroFromBinaryExpression(node) {
-    if(astToCode(node.left) === '0')
-        return node.right;
-    if(astToCode(node.right) === '0')
-        return node.left;
 }
 
 function removeEmptyStatements(codeString) {
@@ -149,10 +181,19 @@ function isEmptyLine(codeLine) {
     return true;
 }
 
-function generateBindings(params,args) {
+function generateBindings(params, args, varTable) {
     let bindings = {};
-    for (let i = 0 ; i < params.length; i++)
-        bindings[params[i]]=args[i];
+    for (let i = 0 ; i < params.length; i++) {
+        let found = false;
+        for (let j = 0; j < varTable.length; j++)
+            if (params[i] === varTable[j].name) { // param has changed/updated
+                bindings[params[i]] = varTable[j].value;
+                found = true;
+                break;
+            }
+        if(!found) // param has not changed/updated
+            bindings[params[i]] = args[i];
+    }
     return bindings;
 }
 
@@ -180,12 +221,27 @@ function replaceTestVariablesByValues(test, bindings) {
     return estraverse.replace(test, {
         enter: function (node) {
             if (node.type === 'Identifier') {
-                let name  = astToCode(node);
-                let value = bindings[name];
+                let value = bindings[astToCode(node)], b = true; // b is for lint only
+                while(b)
+                    try {
+                        value = tryEvalValue(value);
+                        break;
+                    }
+                    catch(error) {
+                        if(bindings[value] !== undefined)
+                            value = bindings[value];
+                        else break;
+                    }
                 return parseCode(JSON.stringify(value)).body[0].expression;
             }
         }
     });
 }
 
-export {parseCode, astToCode, symbolicSubstitution};
+function tryEvalValue(value) {
+    if(eval(value) !== undefined)
+        return eval(value);
+    return value;
+}
+
+export {parseCode, astToCode, symbolicSubstitution, initVarTable};

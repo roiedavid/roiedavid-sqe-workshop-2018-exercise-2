@@ -6,7 +6,7 @@ $(document).ready(function () {
         let codeToParse = $('#codePlaceholder').val(), argumentsToParse = $('#argumentsPlaceholder').val();
         let parsedCode = parseCode(codeToParse), parsedArgs = parseCode(argumentsToParse); // string -> ast
         $('#parsedCode').val(JSON.stringify(parsedCode, null, 2));
-        let substituted = symbolicSubstitution(parsedCode,parsedArgs); // returns {func, linesColorsArray}
+        let substituted = symbolicSubstitution(parsedCode, parsedArgs); // returns {func, linesColorsArray}
         let substitutedCode = astToCode(substituted.function); // ast -> string
         let substitutedCodeLines = substitutedCode.split('\n'); // split output string to lines array
         clearSubstitutedCode(); // clears page if it's already has code output from previous running
