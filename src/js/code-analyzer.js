@@ -62,7 +62,7 @@ function getArgsValues(parsedArgs) {
 // Performs symbolic substitution on a function with given args
 function symbolicSubstitution(parsedCode, parsedArgs) {
     let varTable = initVarTable(parsedCode), parsedFunction= getFunctionDecl(parsedCode), params = initParams(parsedFunction), args = getArgsValues(parsedArgs);
-    substitute(parsedFunction, params, varTable); // static substitution. replace local vars with params expressionsconsole.log('here');
+    substitute(parsedFunction, params, varTable); // static substitution. replace local vars with params expressions
     parsedFunction = parseCode(removeEmptyStatements(astToCode(parsedFunction))); // get rid of EmptyStatements
     parsedFunction = parseCode(astToCode(parsedFunction)); // updates lines
     let linesColorsArray = pathColoring(parsedFunction, generateBindings(params, args, varTable));
@@ -71,7 +71,8 @@ function symbolicSubstitution(parsedCode, parsedArgs) {
 
 const substituteHandlersMap = {'VariableDeclaration': substituteVariableDeclarationHandler,
     'IfStatement': substituteIfStatementHandler , 'WhileStatement': substituteWhileStatementHandler,
-    'ExpressionStatement': substituteAssignmentExpressionHandler, 'ReturnStatement': substituteReturnStatementHandler};
+    'ExpressionStatement': substituteAssignmentExpressionHandler, 'ReturnStatement': substituteReturnStatementHandler,
+    'SequenceExpression': substituteSequenceExpressionHandler};
 
 function runFunc(func, node, params, varTable) {
     return  func ? func(node, params, varTable) : varTable;
@@ -98,7 +99,7 @@ function substituteVariableDeclarationHandler(node, params, varTable){
         let name = astToCode(node.declarations[i].id), value;
         if(node.declarations[i].init)
             value = astToCode(getValueAsParamsExp(node.declarations[i].init, params, varTable)).replace(/;/g, '');
-        varTable.push({name:name, value: value});
+        varTable.push({name:name, value: value ? value : 'null'});
     }
     return varTable;
 }
@@ -107,6 +108,14 @@ function substituteIfStatementHandler(node, params, varTable) {
     let newTest = astToCode(getValueAsParamsExp(node.test, params, varTable)).replace(/;/g, '');
     node.test = parseCode(newTest).body[0].expression;
     let scopeVarTable = JSON.parse(JSON.stringify(varTable)); // deep copy of varTable
+    if(node.consequent.type === 'BlockStatement')
+        handleBlockInsideIfStatement(node, params, scopeVarTable);
+    else
+        substitute(node.consequent, params, varTable);
+    return varTable;
+}
+
+function handleBlockInsideIfStatement(node, params, scopeVarTable) {
     for (let i = 0; i < node.consequent.body.length; i++){
         let currentNode = node.consequent.body[i];
         if (currentNode.type === 'ExpressionStatement' && currentNode.expression.type === 'AssignmentExpression') {
@@ -117,7 +126,6 @@ function substituteIfStatementHandler(node, params, varTable) {
         else
             scopeVarTable = substitute(currentNode, params, scopeVarTable);
     }
-    return varTable;
 }
 
 function substituteWhileStatementHandler(node, params, varTable) {
@@ -160,6 +168,12 @@ function substituteArrayAssignmentExpressionHandler(assignmentExpressionNode, pa
             array[index] = newValue;
             varTable[i].value = JSON.stringify(array);
         }
+    return varTable;
+}
+
+function substituteSequenceExpressionHandler(node, params, varTable) {
+    for (let i = 0; i < node.expressions.length; i++)
+        varTable = substitute(node.expressions[i], params, varTable);
     return varTable;
 }
 
@@ -236,29 +250,30 @@ function evalTest(test, bindings) {
     return eval(astToCode(newTest));
 }
 
-function replaceTestVariablesByValues(test, bindings) {
+function replaceTestVariablesByValues(test, bindings){
     return estraverse.replace(test, {
         enter: function (node) {
-            if (node.type === 'Identifier') {
-                let value = bindings[astToCode(node)], b = true; // b is for lint only
-                while(b)
-                    try {
-                        value = tryEvalValue(value);
-                        break;
-                    }
-                    catch(error) {
-                        if(bindings[value] !== undefined)
-                            value = bindings[value];
-                    }
-                return parseCode(JSON.stringify(value)).body[0].expression;
-            }
+            if (node.type === 'Identifier')
+                return replaceTestIdentifier(node, bindings);
         }
     });
 }
 
-function tryEvalValue(value) {
-    if(eval(value) !== undefined)
-        return eval(value);
+function replaceTestIdentifier(node, bindings) {
+    let value = bindings[astToCode(node)], b = true; // b is for lint only
+    while(b) {
+        try {
+            value = eval(value);
+            break;
+        } catch (error) {
+            if (bindings[value] !== undefined)
+                value = bindings[value];
+            else
+                break;
+
+        }
+    }
+    return parseCode(JSON.stringify(value)).body[0].expression;
 }
 
 export {parseCode, astToCode, symbolicSubstitution, initVarTable};
