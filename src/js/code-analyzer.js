@@ -29,7 +29,7 @@ function initVarTable(parsedCode) {
 
 function globalVariableDeclarationHandler(node, varTable) {
     for (let i = 0; i < node.declarations.length; i++)
-        varTable.push({name: astToCode(node.declarations[i].id), value: astToCode(node.declarations[i].init)});
+        varTable.push({name: astToCode(node.declarations[i].id), value: node.declarations[i].init ? astToCode(node.declarations[i].init) : 'null'});
 }
 
 function globalAssignmentExpressionHandler(node, varTable) {
@@ -62,7 +62,7 @@ function getArgsValues(parsedArgs) {
 // Performs symbolic substitution on a function with given args
 function symbolicSubstitution(parsedCode, parsedArgs) {
     let varTable = initVarTable(parsedCode), parsedFunction= getFunctionDecl(parsedCode), params = initParams(parsedFunction), args = getArgsValues(parsedArgs);
-    substitute(parsedFunction, params, varTable); // static substitution. replace local vars with params expressions
+    substitute(parsedFunction, params, varTable); // static substitution. replace local vars with params expressionsconsole.log('here');
     parsedFunction = parseCode(removeEmptyStatements(astToCode(parsedFunction))); // get rid of EmptyStatements
     parsedFunction = parseCode(astToCode(parsedFunction)); // updates lines
     let linesColorsArray = pathColoring(parsedFunction, generateBindings(params, args, varTable));
@@ -95,8 +95,9 @@ function substitute(ast, params, varTable) {
 
 function substituteVariableDeclarationHandler(node, params, varTable){
     for (let i = 0; i < node.declarations.length; i++) {
-        let name = astToCode(node.declarations[i].id);
-        let value = astToCode(getValueAsParamsExp(node.declarations[i].init, params, varTable)).replace(/;/g, '');
+        let name = astToCode(node.declarations[i].id), value;
+        if(node.declarations[i].init)
+            value = astToCode(getValueAsParamsExp(node.declarations[i].init, params, varTable)).replace(/;/g, '');
         varTable.push({name:name, value: value});
     }
     return varTable;
@@ -130,17 +131,35 @@ function substituteWhileStatementHandler(node, params, varTable) {
 function substituteAssignmentExpressionHandler(expressionStatementNode, params, varTable) {
     if(expressionStatementNode.expression.type !== 'AssignmentExpression')
         return varTable;
-    let name = astToCode(expressionStatementNode.expression.left);
-    let value = astToCode(getValueAsParamsExp(expressionStatementNode.expression.right, params, varTable)).replace(/;/g, '');
-    let found = false;
-    for (let i = 0; i < varTable.length && !found; i++)
-        if (varTable[i].name === name) {
-            varTable[i] = {name: name, value: value};
-            found = true;
-        }
-    if(!found) // first change of param
+    let left = expressionStatementNode.expression.left;
+    if(left.type === 'MemberExpression')
+        return substituteArrayAssignmentExpressionHandler(expressionStatementNode.expression, params, varTable);
+    let name = astToCode(left), value = astToCode(getValueAsParamsExp(expressionStatementNode.expression.right, params, varTable)).replace(/;/g, '');
+    let succeeded = tryToUpdateValueInTable(varTable, name, value);
+    if(!succeeded) // first change of param
         varTable.push({name: name, value: value});
     expressionStatementNode.expression.right = parseCode(value).body[0].expression;
+    return varTable;
+}
+
+function tryToUpdateValueInTable(varTable, name, value) {
+    for (let i = 0; i < varTable.length; i++)
+        if (varTable[i].name === name) {
+            varTable[i].value = value;
+            return true;
+        }
+    return false;
+}
+
+function substituteArrayAssignmentExpressionHandler(assignmentExpressionNode, params, varTable) {
+    let name = astToCode(assignmentExpressionNode.left.object);
+    let newValue = eval(astToCode(getValueAsParamsExp(assignmentExpressionNode.right, params, varTable)));
+    for (let i = 0; i < varTable.length; i++)
+        if (varTable[i].name === name) {
+            let array = eval(varTable[i].value), index = eval(astToCode(assignmentExpressionNode.left.property));
+            array[index] = newValue;
+            varTable[i].value = JSON.stringify(array);
+        }
     return varTable;
 }
 
@@ -230,7 +249,6 @@ function replaceTestVariablesByValues(test, bindings) {
                     catch(error) {
                         if(bindings[value] !== undefined)
                             value = bindings[value];
-                        else break;
                     }
                 return parseCode(JSON.stringify(value)).body[0].expression;
             }
@@ -241,7 +259,6 @@ function replaceTestVariablesByValues(test, bindings) {
 function tryEvalValue(value) {
     if(eval(value) !== undefined)
         return eval(value);
-    return value;
 }
 
 export {parseCode, astToCode, symbolicSubstitution, initVarTable};
