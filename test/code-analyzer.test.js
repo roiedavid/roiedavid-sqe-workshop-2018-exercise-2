@@ -203,4 +203,15 @@ function foo(x, y){
         assert(JSON.stringify(symbolicSubstitution(parsedCode,parsedArgs)) === expected);
     });
 
+    it('search array in table test', () => {
+        let parsedCode = parseCode(`function f(x){
+    let a = 4;
+    if(a + x == 10)
+       return 3;
+}`);
+        let parsedArgs = parseCode('6');
+        let expected = '{"function":{"type":"Program","body":[{"type":"FunctionDeclaration","id":{"type":"Identifier","name":"f","loc":{"start":{"line":1,"column":9},"end":{"line":1,"column":10}}},"params":[{"type":"Identifier","name":"x","loc":{"start":{"line":1,"column":11},"end":{"line":1,"column":12}}}],"body":{"type":"BlockStatement","body":[{"type":"IfStatement","test":{"type":"BinaryExpression","operator":"==","left":{"type":"BinaryExpression","operator":"+","left":{"type":"Literal","value":4,"raw":"4","loc":{"start":{"line":2,"column":8},"end":{"line":2,"column":9}}},"right":{"type":"Identifier","name":"x","loc":{"start":{"line":2,"column":12},"end":{"line":2,"column":13}}},"loc":{"start":{"line":2,"column":8},"end":{"line":2,"column":13}}},"right":{"type":"Literal","value":10,"raw":"10","loc":{"start":{"line":2,"column":17},"end":{"line":2,"column":19}}},"loc":{"start":{"line":2,"column":8},"end":{"line":2,"column":19}}},"consequent":{"type":"ReturnStatement","argument":{"type":"Literal","value":3,"raw":"3","loc":{"start":{"line":3,"column":15},"end":{"line":3,"column":16}}},"loc":{"start":{"line":3,"column":8},"end":{"line":3,"column":17}}},"alternate":null,"loc":{"start":{"line":2,"column":4},"end":{"line":3,"column":17}}}],"loc":{"start":{"line":1,"column":14},"end":{"line":4,"column":1}}},"generator":false,"expression":false,"async":false,"loc":{"start":{"line":1,"column":0},"end":{"line":4,"column":1}}}],"sourceType":"script","loc":{"start":{"line":1,"column":0},"end":{"line":4,"column":1}}},"linesColorsArray":[{"line":2,"color":"chartreuse"}]}';
+        assert(JSON.stringify(symbolicSubstitution(parsedCode,parsedArgs)) === expected);
+    });
+
 });

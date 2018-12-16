@@ -72,7 +72,7 @@ function symbolicSubstitution(parsedCode, parsedArgs) {
 const substituteHandlersMap = {'VariableDeclaration': substituteVariableDeclarationHandler,
     'IfStatement': substituteIfStatementHandler , 'WhileStatement': substituteWhileStatementHandler,
     'ExpressionStatement': substituteAssignmentExpressionHandler, 'ReturnStatement': substituteReturnStatementHandler,
-    'SequenceExpression': substituteSequenceExpressionHandler};
+    /* 'SequenceExpression': substituteSequenceExpressionHandler */};
 
 function runFunc(func, node, params, varTable) {
     return  func ? func(node, params, varTable) : varTable;
@@ -171,11 +171,11 @@ function substituteArrayAssignmentExpressionHandler(assignmentExpressionNode, pa
     return varTable;
 }
 
-function substituteSequenceExpressionHandler(node, params, varTable) {
-    for (let i = 0; i < node.expressions.length; i++)
-        varTable = substitute(node.expressions[i], params, varTable);
-    return varTable;
-}
+// function substituteSequenceExpressionHandler(node, params, varTable) {
+//     for (let i = 0; i < node.expressions.length; i++)
+//         varTable = substitute(node.expressions[i], params, varTable);
+//     return varTable;
+// }
 
 function substituteReturnStatementHandler(node, params, varTable) {
     let newReturn = astToCode(getValueAsParamsExp(node.argument, params, varTable)).replace(/;/g, '');
@@ -253,27 +253,30 @@ function evalTest(test, bindings) {
 function replaceTestVariablesByValues(test, bindings){
     return estraverse.replace(test, {
         enter: function (node) {
-            if (node.type === 'Identifier')
-                return replaceTestIdentifier(node, bindings);
+            if (node.type === 'Identifier'){
+                let value = bindings[astToCode(node)];
+                try {
+                    value = eval(value);
+                }
+                catch (error) {
+                    value = eval(astToCode(getValueAsLiterals(value, bindings)).replace(/;/g, ''));
+                }
+                return parseCode(JSON.stringify(value)).body[0].expression;
+            }
         }
     });
 }
 
-function replaceTestIdentifier(node, bindings) {
-    let value = bindings[astToCode(node)], b = true; // b is for lint only
-    while(b) {
-        try {
-            value = eval(value);
-            break;
-        } catch (error) {
-            if (bindings[value] !== undefined)
-                value = bindings[value];
-            else
-                break;
-
+function getValueAsLiterals(value, bindings) {
+    let ast = parseCode(value).body[0];
+    estraverse.replace(ast, {
+        enter: function (node) {
+            if (node.type === 'Identifier'){
+                return parseCode(JSON.stringify(bindings[node.name])).body[0];
+            }
         }
-    }
-    return parseCode(JSON.stringify(value)).body[0].expression;
+    });
+    return ast;
 }
 
 export {parseCode, astToCode, symbolicSubstitution, initVarTable};
